@@ -40,3 +40,41 @@ def hls_to_rgb(h, l, s):
         m2 = l+s-(l*s)
     m1 = 2.0*l - m2
     return (_v(m1, m2, h+1/3), _v(m1, m2, h), _v(m1, m2, h-1/3))
+
+
+#get colors
+def getRed(img):
+    values = []
+    for row in img:
+        for col in row:
+            values.append(col[0])
+    return values
+
+def getGreen(img):
+    values = []
+    for row in img:
+        for col in row:
+            values.append(col[1])
+    return values
+
+def getBlue(img):
+    values = []
+    for row in img:
+        for col in row:
+            values.append(col[2])
+    return values
+
+def getRGB(img):
+    red = np.mean(getRed(img))
+    green = np.mean(getGreen(img))
+    blue = np.mean(getBlue(img))
+    return red, green, blue
+
+
+def apply_HLS(img, ref_img):
+    r, g, b = getRGB(img)
+    ref_r, ref_g, ref_b = getRGB(ref_img)
+    h, l, s = rgb_to_hls(r, g, b)
+    ref_h, ref_l, ref_s = rgb_to_hls(ref_r, ref_g, ref_b)
+    
+    return hls_to_rgb(h, ref_l, ref_s)
