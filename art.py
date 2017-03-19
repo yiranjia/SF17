@@ -8,20 +8,21 @@ import numpy as np
 import scipy.io
 import scipy.misc
 import tensorflow as tf
+import sendemail
 
 ###############################################################################
 # Constants for the image input and output.
 ###############################################################################
-def apply_mask(style, http_path)
+def apply_mask(style, __):
     # Output folder for the images.
     rv = ""
     OUTPUT_DIR = 'output/'
     # Style image to use.
     # STYLE_IMAGE = 'images/starry_night.jpg'
-    STYLE_IMAGE = style + '.jpg'
+    STYLE_IMAGE = 'styles/'+style+'.jpg'
     # Content image to use.
     # CONTENT_IMAGE = 'images/hong_kong_2.jpg'
-    CONTENT_IMAGE = http_path
+    CONTENT_IMAGE = 'ryan.jpg'
     # Image dimensions constants. 
     IMAGE_WIDTH = 800
     IMAGE_HEIGHT = 600
@@ -34,7 +35,7 @@ def apply_mask(style, http_path)
     # content image.
     NOISE_RATIO = 0.6
     # Number of iterations to run.
-    ITERATIONS = 200
+    ITERATIONS = 16
     # Constant to put more emphasis on content loss.
     BETA = 5
     # Constant to put more emphasis on style loss.
@@ -142,9 +143,9 @@ def apply_mask(style, http_path)
             """
             Return the weights and bias from the VGG model for a given layer.
             """
-            W = vgg_layers[0][layer][0][0][0][0][0]
-            b = vgg_layers[0][layer][0][0][0][0][1]
-            layer_name = vgg_layers[0][layer][0][0][-2]
+            W = vgg_layers[0][layer][0][0][2][0][0]
+            b = vgg_layers[0][layer][0][0][2][0][1]
+            layer_name = vgg_layers[0][layer][0][0][0][0]
             assert layer_name == expected_layer_name
             return W, b
 
@@ -268,57 +269,56 @@ def apply_mask(style, http_path)
         loss = sum([W[l] * E[l] for l in range(len(layers))])
         return loss
 
+    with tf.Session() as sess:
+        # Load the images.
+        content_image = load_image(CONTENT_IMAGE)
+        style_image = load_image(STYLE_IMAGE)
+        # Load the model.
+        model = load_vgg_model(VGG_MODEL)
 
-    if __name__ == '__main__':
-        with tf.Session() as sess:
-            # Load the images.
-            content_image = load_image(CONTENT_IMAGE)
-            style_image = load_image(STYLE_IMAGE)
-            # Load the model.
-            model = load_vgg_model(VGG_MODEL)
+        # Generate the white noise and content presentation mixed image
+        # which will be the basis for the algorithm to "paint".
+        input_image = generate_noise_image(content_image)
 
-            # Generate the white noise and content presentation mixed image
-            # which will be the basis for the algorithm to "paint".
-            input_image = generate_noise_image(content_image)
+        sess.run(tf.initialize_all_variables())
+        # Construct content_loss using content_image.
+        sess.run(model['input'].assign(content_image))
+        content_loss = content_loss_func(sess, model)
 
-            sess.run(tf.initialize_all_variables())
-            # Construct content_loss using content_image.
-            sess.run(model['input'].assign(content_image))
-            content_loss = content_loss_func(sess, model)
+        # Construct style_loss using style_image.
+        sess.run(model['input'].assign(style_image))
+        style_loss = style_loss_func(sess, model)
 
-            # Construct style_loss using style_image.
-            sess.run(model['input'].assign(style_image))
-            style_loss = style_loss_func(sess, model)
+        # Instantiate equation 7 of the paper.
+        total_loss = BETA * content_loss + ALPHA * style_loss
 
-            # Instantiate equation 7 of the paper.
-            total_loss = BETA * content_loss + ALPHA * style_loss
+        # From the paper: jointly minimize the distance of a white noise image
+        # from the content representation of the photograph in one layer of
+        # the neywork and the style representation of the painting in a number
+        # of layers of the CNN.
+        #
+        # The content is built from one layer, while the style is from five
+        # layers. Then we minimize the total_loss, which is the equation 7.
+        optimizer = tf.train.AdamOptimizer(2.0)
+        train_step = optimizer.minimize(total_loss)
 
-            # From the paper: jointly minimize the distance of a white noise image
-            # from the content representation of the photograph in one layer of
-            # the neywork and the style representation of the painting in a number
-            # of layers of the CNN.
-            #
-            # The content is built from one layer, while the style is from five
-            # layers. Then we minimize the total_loss, which is the equation 7.
-            optimizer = tf.train.AdamOptimizer(2.0)
-            train_step = optimizer.minimize(total_loss)
+        sess.run(tf.initialize_all_variables())
+        sess.run(model['input'].assign(input_image))
+        for it in range(ITERATIONS):
+            sess.run(train_step)
+            if it%2 == 0:
+                # Print every 100 iteration.
+                mixed_image = sess.run(model['input'])
+                print('Iteration %d' % (it))
+                print('sum : ', sess.run(tf.reduce_sum(mixed_image)))
+                print('cost: ', sess.run(total_loss))
 
-            sess.run(tf.initialize_all_variables())
-            sess.run(model['input'].assign(input_image))
-            for it in range(ITERATIONS):
-                sess.run(train_step)
-                if it%100 == 0:
-                    # Print every 100 iteration.
-                    mixed_image = sess.run(model['input'])
-                    print('Iteration %d' % (it))
-                    print('sum : ', sess.run(tf.reduce_sum(mixed_image)))
-                    print('cost: ', sess.run(total_loss))
+                if not os.path.exists(OUTPUT_DIR):
+                    os.mkdir(OUTPUT_DIR)
 
-                    if not os.path.exists(OUTPUT_DIR):
-                        os.mkdir(OUTPUT_DIR)
+                filename = 'output/%d.png' % (it)
+                rv = filename
+                save_image(filename, mixed_image)
 
-                    filename = 'output/%d.png' % (it)
-                    rv = filename
-                    save_image(filename, mixed_image)
-
-    return "54.202.133.234/"+ new File("rv").getAbsolutePath()
+        sendemail.send_em("cyberbrushsfhacks@gmail.com")
+        return
